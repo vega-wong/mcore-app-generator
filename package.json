@@ -3,7 +3,9 @@
   "version": "1.0.1",
   "description": "",
   "main": "bin/mca",
-  "bin": "bin/mca",
+  "bin": {
+    "mca":  "bin/mca"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
