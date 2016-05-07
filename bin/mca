@@ -1,0 +1,328 @@
+#!/usr/bin/env node
+
+var program = require('commander');
+var mkdirp = require('mkdirp');
+var os = require('os');
+var fs = require('fs');
+var path = require('path');
+var readline = require('readline');
+var sortedObject = require('sorted-object');
+
+var _exit = process.exit;
+var eol = os.EOL;
+var pkg = require('../package.json');
+
+var version = pkg.version;
+
+// Re-assign process.exit because of commander
+// TODO: Switch to a different command framework
+process.exit = exit
+
+// CLI
+before(program, 'outputHelp', function () {
+  this.allowUnknownOption();
+});
+
+program
+  .version(version)
+  .usage('[options] [dir]')
+  // .option('-e, --ejs', 'add ejs engine support (defaults to jade)')
+  // .option('    --hbs', 'add handlebars engine support')
+  // .option('-H, --hogan', 'add hogan.js engine support')
+  // .option('-c, --css <engine>', 'add stylesheet <engine> support (less|stylus|compass|sass) (defaults to plain css)')
+  .option('-n, --nodePath <path>','set node_modules path symlink to project(not for windows)')
+  .option('    --git', 'add .gitignore')
+  .option('-f, --force', 'force on non-empty directory')
+  .parse(process.argv);
+
+if (!exit.exited) {
+  main();
+}
+
+/**
+ * Install a before function; AOP.
+ */
+
+function before(obj, method, fn) {
+  var old = obj[method];
+
+  obj[method] = function () {
+    fn.call(this);
+    old.apply(this, arguments);
+  };
+}
+
+/**
+ * Prompt for confirmation on STDOUT/STDIN
+ */
+
+function confirm(msg, callback) {
+  var rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+
+  rl.question(msg, function (input) {
+    rl.close();
+    callback(/^y|yes|ok|true$/i.test(input));
+  });
+}
+
+/**
+ * Create application at the given directory `path`.
+ *
+ * @param {String} path
+ */
+
+function createApplication(app_name, path) {
+  var wait = 10;
+
+  console.log();
+  function complete() {
+    if (--wait) return;
+    var prompt = launchedFromCmd() ? '>' : '$';
+
+    console.log();
+    console.log('   install dependencies:');
+    console.log('     %s cd %s && make install', prompt, path);
+    console.log();
+    console.log('   or you can set the symlink to exits dependencies folder(not for windows):');
+    console.log('     %s cd %s && make ln',prompt, path);
+    console.log();
+    console.log('   run the app:');
+    console.log('     %s make', prompt);
+    console.log();
+  }
+
+  // coffee
+  var app = loadTemplate('js/src/app/index.coffee');
+  var tag = loadTemplate('js/src/tag/base.coffee');
+  var view = loadTemplate('js/src/view/index.coffee');
+
+  // CSS
+  var cssTag = loadTemplate('js/src/style/tag/base.scss');
+  var cssView = loadTemplate('js/src/style/view/index.scss');
+
+  // tpl
+  var tplTag = loadTemplate('js/src/tpl/tag/base.html');
+  var tplView = loadTemplate('js/src/tpl/view/index.html');
+  var outTpl = loadTemplate('outTpl/index.html');
+
+  //tool
+  var buildHtml = loadTemplate('tool/buildHtml.coffee');
+  var getHash = loadTemplate('tool/getHash.coffee');
+
+  //webpack config
+  var webpackConfig = loadTemplate('webpack.config.js');
+  //make file
+  var makeFile = loadTemplate('Makefile');
+
+  mkdir(path, function(){
+    mkdir(path + '/build');
+    mkdir(path + '/js/src');
+    mkdir(path + '/outTpl', function(){
+        write(path + '/outTpl/index.html',outTpl);
+        complete();
+    });
+    mkdir(path + '/tool',function(){
+        write(path + '/tool/buildHtml.coffee',buildHtml);
+        write(path + '/tool/getHash.coffee', getHash);
+        complete();
+    });
+    mkdir(path + '/js/src/app',function(){
+        write(path + '/js/src/app/index.coffee',app);
+        complete();
+    });
+    mkdir(path + '/js/src/style',function(){
+        mkdir(path + '/js/src/style/tag',function(){
+            write(path + '/js/src/style/tag/base.scss', cssTag);
+            complete();
+        });
+        mkdir(path + '/js/src/style/view', function(){
+            write(path + '/js/src/style/view/index.scss', cssView);
+            complete();
+        });
+    });
+
+    mkdir(path + '/js/src/tag', function(){
+        write(path + '/js/src/tag/base.coffee', tag);
+        complete();
+    });
+
+    mkdir(path + '/js/src/view', function(){
+        write(path + '/js/src/view/index.coffee',view);
+        complete();
+    });
+
+    mkdir(path + '/js/src/tpl', function(){
+        mkdir(path + '/js/src/tpl/tag', function(){
+            write(path + '/js/src/tpl/tag/base.html',tplTag);
+            complete();
+        });
+        mkdir(path + '/js/src/tpl/view', function(){
+            write(path + '/js/src/tpl/view/index.html', tplView);
+            complete();
+        });
+    });
+
+    // package.json
+    var pkg = {
+        name: app_name
+      , version: '0.0.0'
+      , description: ''
+    //   , private: true
+      , scripts: { start: 'make dev' }
+      , author: ''
+      , license: 'ISC'
+      , dependencies: {
+        'mcoreapp': '^2.0.42'
+      },
+      devDependencies: {
+        'autoprefixer-loader': '^3.2.0',
+        'coffee-loader': '^0.7.2',
+        'coffee-script': '^1.10.0',
+        'css-loader': '^0.23.1',
+        'extract-text-webpack-plugin': '^1.0.1',
+        'file-loader': '^0.8.5',
+        'glob': '^7.0.3',
+        'h2svd-loader': '^1.0.19',
+        'node-sass': '^3.7.0',
+        'sass-loader': '^3.2.0',
+        'style-loader': '^0.13.1',
+        'url-loader': '^0.5.7',
+        'webpack': '^1.13.0'
+      }
+    }
+    // sort dependencies like npm(1)
+    // pkg.dependencies = sortedObject(pkg.dependencies);
+
+    // write files
+    write(path + '/package.json', JSON.stringify(pkg, null, 2));
+    write(path + '/webpack.config.js', webpackConfig);
+
+    var nodePath = '/usr/local/lib/node_modules';    
+    if(program.nodePath){
+        nodePath = program.nodePath
+    }
+    makeFile= makeFile.replace('{nodePath}',nodePath);
+    write(path + '/Makefile', makeFile);
+    if (program.git) {
+      write(path + '/.gitignore', loadTemplate('gitignore'));
+    }
+    complete();
+  });
+}
+
+
+/**
+ * Check if the given directory `path` is empty.
+ *
+ * @param {String} path
+ * @param {Function} fn
+ */
+
+function emptyDirectory(path, fn) {
+  fs.readdir(path, function(err, files){
+    if (err && 'ENOENT' != err.code) throw err;
+    fn(!files || !files.length);
+  });
+}
+
+/**
+ * Graceful exit for async STDIO
+ */
+
+function exit(code) {
+  // flush output for Node.js Windows pipe bug
+  // https://github.com/joyent/node/issues/6247 is just one bug example
+  // https://github.com/visionmedia/mocha/issues/333 has a good discussion
+  function done() {
+    if (!(draining--)) _exit(code);
+  }
+
+  var draining = 0;
+  var streams = [process.stdout, process.stderr];
+
+  exit.exited = true;
+
+  streams.forEach(function(stream){
+    // submit empty write request and wait for completion
+    draining += 1;
+    stream.write('', done);
+  });
+
+  done();
+}
+
+/**
+ * Determine if launched from cmd.exe
+ */
+
+function launchedFromCmd() {
+  return process.platform === 'win32'
+    && process.env._ === undefined;
+}
+
+/**
+ * Load template file.
+ */
+
+function loadTemplate(name) {
+  return fs.readFileSync(path.join(__dirname, '..', 'templates', name), 'utf-8');
+}
+
+/**
+ * Main program.
+ */
+
+function main() {
+  // Path
+  var destinationPath = program.args.shift() || '.';
+
+  // App name
+  var appName = path.basename(path.resolve(destinationPath));
+
+  // Generate application
+  emptyDirectory(destinationPath, function (empty) {
+    if (empty || program.force) {
+      createApplication(appName, destinationPath);
+    } else {
+      confirm('destination is not empty, continue? [y/N] ', function (ok) {
+        if (ok) {
+          process.stdin.destroy();
+          createApplication(appName, destinationPath);
+        } else {
+          console.error('aborting');
+          exit(1);
+        }
+      });
+    }
+  });
+}
+
+/**
+ * echo str > path.
+ *
+ * @param {String} path
+ * @param {String} str
+ */
+
+function write(path, str, mode) {
+  fs.writeFileSync(path, str, { mode: mode || 0666 });
+  console.log('   \x1b[36mcreate\x1b[0m : ' + path);
+}
+
+/**
+ * Mkdir -p.
+ *
+ * @param {String} path
+ * @param {Function} fn
+ */
+
+function mkdir(path, fn) {
+  mkdirp(path, 0755, function(err){
+    if (err) throw err;
+    console.log('   \033[36mcreate\033[0m : ' + path);
+    fn && fn();
+  });
+}
