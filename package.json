@@ -1,17 +1,17 @@
 {
-    "name": "mcore-app-generator",
-    "version": "1.0.0",
-    "description": "",
-    "main": "bin/mca",
-    "bin":"bin/mca",
-    "scripts": {
-        "test": "echo \"Error: no test specified\" && exit 1"
-    },
-    "author": "vegawong",
-    "license": "ISC",
-    "dependencies": {
-        "commander": "2.7.1",
-        "mkdirp": "0.5.1",
-        "sorted-object": "1.0.0"
-    }
+  "name": "mcore-app-generator",
+  "version": "1.0.1",
+  "description": "",
+  "main": "bin/mca",
+  "bin": "bin/mca",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "vegawong",
+  "license": "ISC",
+  "dependencies": {
+    "commander": "2.7.1",
+    "mkdirp": "0.5.1",
+    "sorted-object": "1.0.0"
+  }
 }
